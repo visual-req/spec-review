@@ -56,6 +56,14 @@
               <div class="k">{{ t('llm.apiKey') }}</div>
               <div class="v">{{ llmRuntime.apiKeyMasked || '-' }}</div>
             </div>
+            <div class="llm-config-item">
+              <div class="k">{{ t('llm.timeoutSeconds') }}</div>
+              <div class="v">{{ llmRuntime.timeoutSeconds || '-' }}</div>
+            </div>
+            <div class="llm-config-item">
+              <div class="k">{{ t('llm.ruleChunkSize') }}</div>
+              <div class="v">{{ llmRuntime.ruleChunkSize || '-' }}</div>
+            </div>
             <div class="llm-config-item llm-config-item-wide">
               <div class="k">{{ t('llm.configPath') }}</div>
               <div class="v">{{ llmRuntime.configPath || '-' }}</div>
@@ -354,6 +362,8 @@ const dict = {
     'llm.model': '模型名',
     'llm.authMode': '鉴权方式',
     'llm.apiKey': 'API Key',
+    'llm.timeoutSeconds': '超时时间(秒)',
+    'llm.ruleChunkSize': '规则批次大小',
     'llm.configPath': '配置文件',
     'llm.loadError': '读取失败',
     'time.h': '小时',
@@ -449,6 +459,8 @@ const dict = {
     'llm.model': 'Model',
     'llm.authMode': 'Auth',
     'llm.apiKey': 'API Key',
+    'llm.timeoutSeconds': 'Timeout (s)',
+    'llm.ruleChunkSize': 'Rule Batch Size',
     'llm.configPath': 'Config File',
     'llm.loadError': 'Load Error',
     'time.h': 'h',
@@ -544,6 +556,8 @@ const dict = {
     'llm.model': 'モデル名',
     'llm.authMode': '認証方式',
     'llm.apiKey': 'API Key',
+    'llm.timeoutSeconds': 'タイムアウト(秒)',
+    'llm.ruleChunkSize': 'ルール分割数',
     'llm.configPath': '設定ファイル',
     'llm.loadError': '読み取り失敗',
     'time.h': '時間',
@@ -597,6 +611,8 @@ const llmRuntime = ref({
   model: '',
   authMode: '',
   apiKeyMasked: '',
+  timeoutSeconds: '',
+  ruleChunkSize: '',
   configPath: '',
   error: '',
 })
@@ -764,6 +780,8 @@ async function loadLlmConfig() {
       model: String(data?.model || ''),
       authMode: String(data?.auth_mode || ''),
       apiKeyMasked: String(data?.api_key_masked || ''),
+      timeoutSeconds: String(data?.timeout_seconds || ''),
+      ruleChunkSize: String(data?.rule_chunk_size || ''),
       configPath: String(data?.config_path || ''),
       error: '',
     }
@@ -773,6 +791,8 @@ async function loadLlmConfig() {
       model: '',
       authMode: '',
       apiKeyMasked: '',
+      timeoutSeconds: '',
+      ruleChunkSize: '',
       configPath: '',
       error: String(e),
     }
@@ -786,6 +806,8 @@ function llmRuntimeLines() {
   if (info.model) lines.push(t('llm.model') + ': ' + info.model)
   if (info.authMode) lines.push(t('llm.authMode') + ': ' + info.authMode)
   if (info.apiKeyMasked) lines.push(t('llm.apiKey') + ': ' + info.apiKeyMasked)
+  if (info.timeoutSeconds) lines.push(t('llm.timeoutSeconds') + ': ' + info.timeoutSeconds)
+  if (info.ruleChunkSize) lines.push(t('llm.ruleChunkSize') + ': ' + info.ruleChunkSize)
   if (info.configPath) lines.push(t('llm.configPath') + ': ' + info.configPath)
   if (info.error) lines.push(t('llm.loadError') + ': ' + info.error)
   return lines

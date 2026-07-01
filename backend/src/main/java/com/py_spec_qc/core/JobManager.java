@@ -88,7 +88,30 @@ public final class JobManager {
         resp.message = msgScanning(lang);
         resp.progress = progress;
         appendLog(resp, msgStart(files.size(), lang));
-        appendFileLog(resolveLogPath(), "job start job_id=" + jobId + " lang=" + (lang == null ? "" : lang.trim()) + " req_dir=" + (reqDir == null ? "" : reqDir.toAbsolutePath().normalize()) + " out_dir=" + (outDir == null ? "" : outDir.toAbsolutePath().normalize()) + " rules_dir=" + (rulesDir == null ? "" : rulesDir.toAbsolutePath().normalize()) + " file_count=" + files.size());
+        AppConfig cfg = null;
+        try {
+            cfg = new ConfigLoader().load();
+        } catch (Exception ignored) {
+        }
+        String llmUrl = cfg == null ? "" : safeTrim(cfg.deepseekBaseUrl);
+        String llmModel = cfg == null ? "" : safeTrim(cfg.deepseekModel);
+        String llmApiKeyMasked = maskSecret(cfg == null ? "" : cfg.deepseekApiKey);
+        String llmTimeoutSeconds = String.valueOf((cfg == null || cfg.deepseekTimeoutSeconds == null || cfg.deepseekTimeoutSeconds <= 0) ? 60 : cfg.deepseekTimeoutSeconds);
+        String ruleChunkSize = String.valueOf((cfg == null || cfg.scanRuleChunkSize == null || cfg.scanRuleChunkSize <= 0) ? 5 : cfg.scanRuleChunkSize);
+        appendFileLog(
+                resolveLogPath(),
+                "job start job_id=" + jobId
+                        + " lang=" + (lang == null ? "" : lang.trim())
+                        + " req_dir=" + (reqDir == null ? "" : reqDir.toAbsolutePath().normalize())
+                        + " out_dir=" + (outDir == null ? "" : outDir.toAbsolutePath().normalize())
+                        + " rules_dir=" + (rulesDir == null ? "" : rulesDir.toAbsolutePath().normalize())
+                        + " file_count=" + files.size()
+                        + " llm_url=" + llmUrl
+                        + " llm_model=" + llmModel
+                        + " llm_api_key=" + llmApiKeyMasked
+                        + " llm_timeout_seconds=" + llmTimeoutSeconds
+                        + " rule_chunk_size=" + ruleChunkSize
+        );
         jobs.put(jobId, resp);
         locks.put(jobId, new Object());
 
@@ -157,6 +180,21 @@ public final class JobManager {
                 appendFileLog(resolveLogPath(), stackTraceString(e));
             }
         }
+    }
+
+    private static String safeTrim(String s) {
+        return s == null ? "" : s.trim();
+    }
+
+    private static String maskSecret(String raw) {
+        String s = safeTrim(raw);
+        if (s.isBlank()) {
+            return "";
+        }
+        if (s.length() <= 8) {
+            return "*".repeat(s.length());
+        }
+        return s.substring(0, 4) + "*".repeat(Math.max(0, s.length() - 8)) + s.substring(s.length() - 4);
     }
 
     private static void mergeProgress(ProgressData progress, FileProgress update) {

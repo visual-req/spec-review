@@ -23,6 +23,7 @@ public final class ConfigLoader {
         Map<String, Object> llm = asMap(config.get("llm"));
         Map<String, Object> deepseek = asMap(config.get("deepseek"));
         Map<String, Object> provider = llm.isEmpty() ? deepseek : llm;
+        Map<String, Object> scan = asMap(config.get("scan"));
         Map<String, Object> server = asMap(config.get("server"));
 
         String baseUrl = envOrAny((String) provider.get("base_url"), "LLM_BASE_URL", "DEEPSEEK_BASE_URL");
@@ -41,6 +42,16 @@ public final class ConfigLoader {
         }
         if (apiKey != null && apiKey.isBlank()) {
             apiKey = null;
+        }
+
+        Integer timeoutSeconds = parseIntOrNull(envOr(valueToString(provider.get("timeout_seconds")), "LLM_TIMEOUT_SECONDS"));
+        if (timeoutSeconds == null || timeoutSeconds <= 0) {
+            timeoutSeconds = 60;
+        }
+
+        Integer ruleChunkSize = parseIntOrNull(envOr(valueToString(scan.get("rule_chunk_size")), "SPEC_QC_RULE_CHUNK_SIZE"));
+        if (ruleChunkSize == null || ruleChunkSize <= 0) {
+            ruleChunkSize = 5;
         }
 
         String serverHost = envOr((String) server.get("host"), "SPEC_QC_HOST");
@@ -72,6 +83,8 @@ public final class ConfigLoader {
         c.deepseekBaseUrl = baseUrl;
         c.deepseekModel = model;
         c.deepseekApiKey = apiKey;
+        c.deepseekTimeoutSeconds = timeoutSeconds;
+        c.scanRuleChunkSize = ruleChunkSize;
         c.workDir = workDir;
         c.configPath = loaded.path == null ? null : loaded.path.toAbsolutePath().normalize();
         c.serverHost = serverHost;

@@ -35,7 +35,6 @@ import java.util.regex.Pattern;
 public final class QualityScanner {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final DateTimeFormatter ISO_SECONDS = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
-    private static final int RULE_CHUNK_SIZE = 5;
     private static final Pattern SORT_MISSING_HINT = Pattern.compile("遗漏\\s*排序|缺少\\s*排序|排序条件\\s*(遗漏|缺少|未)|没有定义\\s*顺序|顺序\\s*没有定义|未定义\\s*顺序|未说明\\s*排序|未明确\\s*排序");
     private static final Pattern SORT_BY_FIELD_ORDER = Pattern.compile("(默认)?按.{1,30}(升序|降序|倒序|正序|倒排)");
     private static final Pattern SORT_RANGE = Pattern.compile("从(新|旧|高|低|大|小|晚|早).{0,6}到(新|旧|高|低|大|小|晚|早)");
@@ -271,8 +270,10 @@ public final class QualityScanner {
             boolean modelFailed = false;
             String modelErr = "";
             String modelStage = "";
-            for (int start = 0; start < rules.size(); start += RULE_CHUNK_SIZE) {
-                int end = Math.min(rules.size(), start + RULE_CHUNK_SIZE);
+            int ruleChunkSize = (config.scanRuleChunkSize == null || config.scanRuleChunkSize <= 0) ? 5 : config.scanRuleChunkSize;
+            appendScanLog(logPath, "scan config file=" + wordPath.getFileName().toString() + " rule_chunk_size=" + ruleChunkSize + " llm_timeout_seconds=" + ((config.deepseekTimeoutSeconds == null || config.deepseekTimeoutSeconds <= 0) ? 60 : config.deepseekTimeoutSeconds));
+            for (int start = 0; start < rules.size(); start += ruleChunkSize) {
+                int end = Math.min(rules.size(), start + ruleChunkSize);
                 int from = start + 1;
                 int to = end;
                 if (progressCallback != null) {
@@ -301,6 +302,7 @@ public final class QualityScanner {
                             config.deepseekBaseUrl,
                             config.deepseekApiKey,
                             config.deepseekModel,
+                            config.deepseekTimeoutSeconds,
                             buildMessages(chunkText, requirementText, from, to, totalRules, lang)
                     );
                     JsonNode obj = outputParser.parseJsonObject(content);

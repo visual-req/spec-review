@@ -28,12 +28,19 @@ public final class DeepSeekClient {
     private static final Object LOG_LOCK = new Object();
     private static final DateTimeFormatter ISO = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
 
-    public String chatCompletions(String baseUrl, String apiKey, String model, List<Map<String, Object>> messages) {
+    public String chatCompletions(String baseUrl, String apiKey, String model, Integer timeoutSeconds, List<Map<String, Object>> messages) {
         String requestId = UUID.randomUUID().toString();
         long startedNs = System.nanoTime();
         String url = configuredRequestUrl(baseUrl);
+        String apiKeyMasked = maskSecret(apiKey);
+        int timeoutSec = (timeoutSeconds == null || timeoutSeconds <= 0) ? 60 : timeoutSeconds;
         log(requestId, "llm_url", Map.of(
-                "LLM_URL", "***LLM URL*** " + safeUrl(url)
+                "LLM_URL", "***LLM URL*** " + safeUrl(url),
+                "model", safeStr(model),
+                "auth_header", "Authorization",
+                "auth_scheme", "Bearer",
+                "api_key_masked", apiKeyMasked,
+                "timeout_seconds", String.valueOf(timeoutSec)
         ));
         Map<String, Object> payload = new HashMap<>();
         payload.put("model", model);
@@ -45,33 +52,40 @@ public final class DeepSeekClient {
         try {
             body = MAPPER.writeValueAsBytes(payload);
         } catch (IOException e) {
-            log(requestId, "serialize_error", Map.of(
-                    "provider", "deepseek",
-                    "url", safeUrl(url),
-                    "model", safeStr(model),
-                    "message_count", String.valueOf(messages == null ? 0 : messages.size()),
-                    "error", safeStr(e.getMessage()),
-                    "stack", stackTrace(e)
-            ));
+            Map<String, String> fields = new HashMap<>();
+            fields.put("provider", "deepseek");
+            fields.put("url", safeUrl(url));
+            fields.put("model", safeStr(model));
+            fields.put("auth_header", "Authorization");
+            fields.put("auth_scheme", "Bearer");
+            fields.put("api_key_masked", apiKeyMasked);
+            fields.put("message_count", String.valueOf(messages == null ? 0 : messages.size()));
+            fields.put("error", safeStr(e.getMessage()));
+            fields.put("stack", stackTrace(e));
+            log(requestId, "serialize_error", fields);
             throw new IllegalArgumentException("Failed to serialize DeepSeek request", e);
         }
 
         String bodySha256 = sha256Hex(body);
-        log(requestId, "request_start", Map.of(
-                "provider", "deepseek",
-                "url", safeUrl(url),
-                "method", "POST",
-                "model", safeStr(model),
-                "message_count", String.valueOf(messages == null ? 0 : messages.size()),
-                "request_bytes", String.valueOf(body.length),
-                "request_sha256", bodySha256,
-                "sensitive_logging", String.valueOf(sensitiveLoggingEnabled()),
-                "messages_summary", summarizeMessages(messages)
-        ));
+        Map<String, String> startFields = new HashMap<>();
+        startFields.put("provider", "deepseek");
+        startFields.put("url", safeUrl(url));
+        startFields.put("method", "POST");
+        startFields.put("model", safeStr(model));
+        startFields.put("auth_header", "Authorization");
+        startFields.put("auth_scheme", "Bearer");
+        startFields.put("api_key_masked", apiKeyMasked);
+        startFields.put("timeout_seconds", String.valueOf(timeoutSec));
+        startFields.put("message_count", String.valueOf(messages == null ? 0 : messages.size()));
+        startFields.put("request_bytes", String.valueOf(body.length));
+        startFields.put("request_sha256", bodySha256);
+        startFields.put("sensitive_logging", String.valueOf(sensitiveLoggingEnabled()));
+        startFields.put("messages_summary", summarizeMessages(messages));
+        log(requestId, "request_start", startFields);
 
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(url))
-                .timeout(Duration.ofSeconds(60))
+                .timeout(Duration.ofSeconds(timeoutSec))
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + apiKey)
                 .POST(HttpRequest.BodyPublishers.ofByteArray(body))
@@ -84,14 +98,17 @@ public final class DeepSeekClient {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
-            log(requestId, "request_error", Map.of(
-                    "provider", "deepseek",
-                    "url", safeUrl(url),
-                    "model", safeStr(model),
-                    "elapsed_ms", String.valueOf(elapsedMs(startedNs)),
-                    "error", safeStr(e.getMessage()),
-                    "stack", stackTrace(e)
-            ));
+            Map<String, String> fields = new HashMap<>();
+            fields.put("provider", "deepseek");
+            fields.put("url", safeUrl(url));
+            fields.put("model", safeStr(model));
+            fields.put("auth_header", "Authorization");
+            fields.put("auth_scheme", "Bearer");
+            fields.put("api_key_masked", apiKeyMasked);
+            fields.put("elapsed_ms", String.valueOf(elapsedMs(startedNs)));
+            fields.put("error", safeStr(e.getMessage()));
+            fields.put("stack", stackTrace(e));
+            log(requestId, "request_error", fields);
             throw new RuntimeException("DeepSeek API request failed: " + e.getMessage(), e);
         }
 
@@ -105,6 +122,7 @@ public final class DeepSeekClient {
         log(requestId, "response_received", Map.of(
                 "provider", "deepseek",
                 "url", safeUrl(url),
+                "api_key_masked", apiKeyMasked,
                 "status", String.valueOf(status),
                 "elapsed_ms", String.valueOf(elapsedMs(startedNs)),
                 "response_bytes", String.valueOf(respBody.length),
@@ -115,16 +133,20 @@ public final class DeepSeekClient {
         ));
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
             Map<String, String> err = extractErrorFields(respText);
-            log(requestId, "http_error", Map.of(
-                    "provider", "deepseek",
-                    "url", safeUrl(url),
-                    "status", String.valueOf(status),
-                    "elapsed_ms", String.valueOf(elapsedMs(startedNs)),
-                    "error_message", err.getOrDefault("message", ""),
-                    "error_type", err.getOrDefault("type", ""),
-                    "error_code", err.getOrDefault("code", ""),
-                    "response_preview", previewResponse(respText)
-            ));
+            Map<String, String> fields = new HashMap<>();
+            fields.put("provider", "deepseek");
+            fields.put("url", safeUrl(url));
+            fields.put("model", safeStr(model));
+            fields.put("auth_header", "Authorization");
+            fields.put("auth_scheme", "Bearer");
+            fields.put("api_key_masked", apiKeyMasked);
+            fields.put("status", String.valueOf(status));
+            fields.put("elapsed_ms", String.valueOf(elapsedMs(startedNs)));
+            fields.put("error_message", err.getOrDefault("message", ""));
+            fields.put("error_type", err.getOrDefault("type", ""));
+            fields.put("error_code", err.getOrDefault("code", ""));
+            fields.put("response_preview", previewResponse(respText));
+            log(requestId, "http_error", fields);
             throw new RuntimeException("DeepSeek API HTTPError: " + resp.statusCode() + ": " + respText);
         }
 
@@ -246,6 +268,20 @@ public final class DeepSeekClient {
             return "";
         }
         return url.replaceAll("\\s+", "");
+    }
+
+    private static String maskSecret(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String s = raw.trim();
+        if (s.isBlank()) {
+            return "";
+        }
+        if (s.length() <= 8) {
+            return "*".repeat(s.length());
+        }
+        return s.substring(0, 4) + "*".repeat(Math.max(0, s.length() - 8)) + s.substring(s.length() - 4);
     }
 
     private static String previewResponse(String s) {

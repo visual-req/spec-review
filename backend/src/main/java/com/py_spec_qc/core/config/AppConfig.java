@@ -6,6 +6,8 @@ public final class AppConfig {
     public String deepseekBaseUrl;
     public String deepseekModel;
     public String deepseekApiKey;
+    public Integer deepseekTimeoutSeconds;
+    public Integer scanRuleChunkSize;
     public Path workDir;
     public Path configPath;
     public String serverHost;

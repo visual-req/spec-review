@@ -105,12 +105,16 @@ public final class ApiController {
         String model = config == null ? "" : safeTrim(config.deepseekModel);
         String configPath = (config == null || config.configPath == null) ? "" : config.configPath.toAbsolutePath().normalize().toString();
         String authMode = (config == null || safeTrim(config.deepseekApiKey).isBlank()) ? "missing" : "bearer";
+        String timeoutSeconds = String.valueOf((config == null || config.deepseekTimeoutSeconds == null || config.deepseekTimeoutSeconds <= 0) ? 60 : config.deepseekTimeoutSeconds);
+        String ruleChunkSize = String.valueOf((config == null || config.scanRuleChunkSize == null || config.scanRuleChunkSize <= 0) ? 5 : config.scanRuleChunkSize);
         return Map.of(
                 "url", url,
                 "model", model,
                 "config_path", configPath,
                 "auth_mode", authMode,
-                "api_key_masked", maskSecret(config == null ? "" : config.deepseekApiKey)
+                "api_key_masked", maskSecret(config == null ? "" : config.deepseekApiKey),
+                "timeout_seconds", timeoutSeconds,
+                "rule_chunk_size", ruleChunkSize
         );
     }
 

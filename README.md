@@ -40,10 +40,20 @@ deepseek:
   base_url: "https://api.deepseek.com/v1"
   api_key: "YOUR_DEEPSEEK_API_KEY"
   model: "deepseek-chat"
+  # 指向公网模型时必须显式允许，否则会阻止发送需求文档（数据不出域）
+  allow_external: true
+
+scan:
+  # 可选：限制可扫描/可浏览的根目录（逗号分隔）；未配置时对工作区外目录仅告警不阻断
+  # allowed_roots: "work"
 
 server:
-  host: "0.0.0.0"
+  # 默认仅本机可访问；如需局域网访问请显式改为 0.0.0.0 并设置 allow_remote: true
+  host: "127.0.0.1"
   port: 8765
+  allow_remote: false
+  # allowed_ips: "127.0.0.1, 192.168.1.*, 10.0.0.0/8"
+  # auth_token: ""
 
 work_dir: "work"
 ```
@@ -55,6 +65,11 @@ export DEEPSEEK_API_KEY="..."
 export DEEPSEEK_BASE_URL="https://api.deepseek.com/v1"
 export DEEPSEEK_MODEL="deepseek-chat"
 export SPEC_QC_WORK_DIR="/abs/path/to/work"
+export SPEC_QC_ALLOW_EXTERNAL_LLM="false"   # 禁止把需求发送到外部模型
+export SPEC_QC_ALLOWED_ROOTS="/abs/req,/abs/rules"  # 限制可扫描目录
+export SPEC_QC_ALLOW_REMOTE="0"             # 非回环监听需显式开启
+export SPEC_QC_ALLOWED_IPS="192.168.1.*"    # 仅这些来源 IP 可访问 /api
+export SPEC_QC_AUTH_TOKEN="..."             # 访问令牌（Header: X-Auth-Token / Bearer）
 ```
 
 2) 启动
@@ -115,4 +130,10 @@ java -jar spec-qc-0.1.0.jar scan -req /path/to/req_dir
 
 ## 安全提示
 
-- 不要把真实 `deepseek.api_key` 或 `DEEPSEEK_API_KEY` 提交到仓库；推荐用环境变量注入
+- 不要把真实 `deepseek.api_key` 或 `DEEPSEEK_API_KEY` 提交到仓库；推荐用环境变量注入（环境变量优先于配置文件）
+- 本地私有配置请使用 `config.local.yaml`（已在 .gitignore 中排除），避免把密钥带入版本库
+- 数据出域：`allow_external=false` 时，若 `base_url` 为公网地址将直接阻止发送需求文档；指向公网模型时会记录 `data_boundary_warning` 日志
+- 敏感信息预检：送审前会对需求文本中的密码/令牌/密钥等做脱敏（记录 `redacted_secrets` 日志）
+- 服务默认仅监听 `127.0.0.1`；监听非本机地址需显式 `server.allow_remote=true`，并建议同时配置 `server.allowed_ips` 与 `server.auth_token`
+- 扫描目录边界：配置 `scan.allowed_roots` 后，扫描/浏览将被限制在这些根目录内；未配置时对工作区外目录仅记录告警
+- 规则行业边界：存在行业专属规则但未声明 `SPEC_QC_INDUSTRY` 时会明确报错，避免跨行业误扫

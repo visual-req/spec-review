@@ -8,6 +8,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,7 +37,9 @@ public final class ConfigLoader {
             model = "deepseek-chat";
         }
 
-        String apiKey = envOrAny((String) provider.get("api_key"), "LLM_API_KEY", "DEEPSEEK_API_KEY");
+        String envApiKey = firstNonBlankEnv("LLM_API_KEY", "DEEPSEEK_API_KEY");
+        boolean apiKeyFromEnv = envApiKey != null;
+        String apiKey = apiKeyFromEnv ? envApiKey : (String) provider.get("api_key");
         if (apiKey != null && (apiKey.equals("YOUR_DEEPSEEK_API_KEY") || apiKey.equals("YOUR_LLM_API_KEY"))) {
             apiKey = null;
         }
@@ -57,8 +60,15 @@ public final class ConfigLoader {
         String serverHost = envOr((String) server.get("host"), "SPEC_QC_HOST");
         Integer serverPort = parseIntOrNull(envOr(valueToString(server.get("port")), "SPEC_QC_PORT"));
 
-        Path workDir = null;
+        boolean allowExternal = parseBool(envOr(valueToString(provider.get("allow_external")), "SPEC_QC_ALLOW_EXTERNAL_LLM"), true);
+        boolean allowRemote = parseBool(envOr(valueToString(server.get("allow_remote")), "SPEC_QC_ALLOW_REMOTE"), false);
+        List<String> allowedIps = parseStringList(envOr(configListString(server.get("allowed_ips")), "SPEC_QC_ALLOWED_IPS"));
+        String authToken = trimToNull(envOr((String) server.get("auth_token"), "SPEC_QC_AUTH_TOKEN"));
+
         Path cwd = Path.of("").toAbsolutePath().normalize();
+        List<Path> allowedRoots = parsePathList(envOr(configListString(scan.get("allowed_roots")), "SPEC_QC_ALLOWED_ROOTS"), cwd);
+
+        Path workDir = null;
         String envWork = System.getenv("SPEC_QC_WORK_DIR");
         if (envWork != null && !envWork.isBlank()) {
             Path p = expandHomePath(envWork.trim());
@@ -83,12 +93,18 @@ public final class ConfigLoader {
         c.deepseekBaseUrl = baseUrl;
         c.deepseekModel = model;
         c.deepseekApiKey = apiKey;
+        c.deepseekApiKeyFromEnv = apiKeyFromEnv;
+        c.deepseekAllowExternal = allowExternal;
         c.deepseekTimeoutSeconds = timeoutSeconds;
         c.scanRuleChunkSize = ruleChunkSize;
+        c.scanAllowedRoots = allowedRoots;
         c.workDir = workDir;
         c.configPath = loaded.path == null ? null : loaded.path.toAbsolutePath().normalize();
         c.serverHost = serverHost;
         c.serverPort = serverPort;
+        c.serverAllowRemote = allowRemote;
+        c.serverAllowedIps = allowedIps;
+        c.serverAuthToken = authToken;
         return c;
     }
 
@@ -100,19 +116,102 @@ public final class ConfigLoader {
         return configValue;
     }
 
-    private static String envOrAny(String configValue, String... envNames) {
-        if (envNames != null) {
-            for (String name : envNames) {
-                if (name == null || name.isBlank()) {
-                    continue;
-                }
-                String env = System.getenv(name);
-                if (env != null && !env.isBlank()) {
-                    return env;
-                }
+    private static String firstNonBlankEnv(String... names) {
+        if (names == null) {
+            return null;
+        }
+        for (String name : names) {
+            if (name == null || name.isBlank()) {
+                continue;
+            }
+            String env = System.getenv(name);
+            if (env != null && !env.isBlank()) {
+                return env;
             }
         }
+        return null;
+    }
+
+    private static String envOrAny(String configValue, String... envNames) {
+        String env = firstNonBlankEnv(envNames);
+        if (env != null) {
+            return env;
+        }
         return configValue;
+    }
+
+    private static boolean parseBool(String s, boolean defaultValue) {
+        if (s == null) {
+            return defaultValue;
+        }
+        String t = s.trim().toLowerCase();
+        if (t.isEmpty()) {
+            return defaultValue;
+        }
+        return t.equals("1") || t.equals("true") || t.equals("yes") || t.equals("y") || t.equals("on");
+    }
+
+    private static String configListString(Object v) {
+        if (v == null) {
+            return null;
+        }
+        if (v instanceof List<?> list) {
+            StringBuilder sb = new StringBuilder();
+            for (Object o : list) {
+                if (o == null) {
+                    continue;
+                }
+                String s = String.valueOf(o).trim();
+                if (s.isEmpty()) {
+                    continue;
+                }
+                if (sb.length() > 0) {
+                    sb.append(';');
+                }
+                sb.append(s);
+            }
+            return sb.toString();
+        }
+        return valueToString(v);
+    }
+
+    private static List<String> parseStringList(String raw) {
+        List<String> out = new ArrayList<>();
+        if (raw == null || raw.isBlank()) {
+            return out;
+        }
+        for (String p : raw.split("[,\\s;]+")) {
+            String t = p.trim();
+            if (!t.isEmpty()) {
+                out.add(t);
+            }
+        }
+        return out;
+    }
+
+    private static List<Path> parsePathList(String raw, Path cwd) {
+        List<Path> out = new ArrayList<>();
+        if (raw == null || raw.isBlank()) {
+            return out;
+        }
+        for (String p : raw.split("[,\\n;]+")) {
+            String t = p.trim();
+            if (t.isEmpty()) {
+                continue;
+            }
+            Path path = expandHomePath(t);
+            Path abs = path.isAbsolute() ? path : cwd.resolve(path);
+            out.add(abs.toAbsolutePath().normalize());
+        }
+        return out;
+    }
+
+    private static String trimToNull(String s) {
+        if (s == null) {
+            return null;
+        }
+        String t = s.trim();
+        return t.isEmpty() ? null : t;
     }
 
     private static Integer parseIntOrNull(String s) {

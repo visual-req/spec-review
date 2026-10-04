@@ -2,6 +2,7 @@ package com.py_spec_qc.core.ai;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.py_spec_qc.core.security.NetworkGuard;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -28,19 +29,30 @@ public final class DeepSeekClient {
     private static final Object LOG_LOCK = new Object();
     private static final DateTimeFormatter ISO = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
 
-    public String chatCompletions(String baseUrl, String apiKey, String model, Integer timeoutSeconds, List<Map<String, Object>> messages) {
+    public String chatCompletions(String baseUrl, String apiKey, String model, Integer timeoutSeconds, boolean allowExternal, List<Map<String, Object>> messages) {
         String requestId = UUID.randomUUID().toString();
         long startedNs = System.nanoTime();
         String url = configuredRequestUrl(baseUrl);
         String apiKeyMasked = maskSecret(apiKey);
         int timeoutSec = (timeoutSeconds == null || timeoutSeconds <= 0) ? 60 : timeoutSeconds;
+        boolean external = NetworkGuard.isExternal(url);
+        if (external && !allowExternal) {
+            log(requestId, "blocked_external", Map.of(
+                    "url", safeUrl(url),
+                    "reason", "llm.allow_external=false",
+                    "hint", "switch to an intranet/private model, or set SPEC_QC_ALLOW_EXTERNAL_LLM=1 to accept data egress"
+            ));
+            throw new IllegalStateException("检测到外部 LLM 地址且 llm.allow_external=false，已阻止发送需求文档以避免数据出域。请改用内网/私有模型，或显式设置 llm.allow_external=true（环境变量 SPEC_QC_ALLOW_EXTERNAL_LLM）。");
+        }
         log(requestId, "llm_url", Map.of(
                 "LLM_URL", "***LLM URL*** " + safeUrl(url),
                 "model", safeStr(model),
                 "auth_header", "Authorization",
                 "auth_scheme", "Bearer",
                 "api_key_masked", apiKeyMasked,
-                "timeout_seconds", String.valueOf(timeoutSec)
+                "timeout_seconds", String.valueOf(timeoutSec),
+                "data_external", String.valueOf(external),
+                "data_boundary_warning", external ? "需求文档内容将发送到外部模型，存在数据出域风险" : ""
         ));
         Map<String, Object> payload = new HashMap<>();
         payload.put("model", model);

@@ -3,6 +3,14 @@
 *.tmp
 .DS_Store
 
+# 本地/私有配置（可能含真实 api_key 等密钥），禁止入库；密钥请优先用环境变量注入
+config.local.yaml
+config.local.yml
+config.local.json
+**/config.local.yaml
+**/config.local.yml
+**/config.local.json
+
 deploy*.sh
 run.sh
 executable/run.sh

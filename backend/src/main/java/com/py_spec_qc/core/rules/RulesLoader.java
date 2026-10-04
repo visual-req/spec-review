@@ -73,6 +73,13 @@ public final class RulesLoader {
             }
         }
 
+        if (requestedIndustry.isEmpty() && hasIndustrySpecificMd && !hasGenericMd) {
+            throw new IllegalArgumentException(
+                    "检测到行业专属规则文件，但未声明目标行业，已拒绝加载以避免跨行业误扫。"
+                    + "请设置环境变量 SPEC_QC_INDUSTRY（例如 SPEC_QC_INDUSTRY=\"银行\"），"
+                    + "或在规则文件的“适用行业”中标注“通用”。dir=" + dir);
+        }
+
         for (Path p : ruleFiles) {
             String suf = suffixLower(p);
             if (suf.equals(".doc")) {

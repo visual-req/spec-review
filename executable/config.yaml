@@ -1,14 +1,25 @@
+# 建议 api_key 通过环境变量 LLM_API_KEY / DEEPSEEK_API_KEY 注入，不要把真实密钥写入本文件。
 llm:
   base_url: "https://api.deepseek.com/v1"
   api_key: "YOUR_LLM_API_KEY"
   model: "deepseek-chat"
   timeout_seconds: 180
+  # allow_external=false 时，若 base_url 指向公网地址将直接阻止发送需求文档（数据不出域）。
+  # 如需使用外部模型（如 deepseek 公网），请显式保留 true 并自行确认数据合规。
+  allow_external: true
 
 scan:
   rule_chunk_size: 1
+  # 可选：限制可扫描/可浏览的根目录（逗号分隔）。未配置时对工作区外的目录仅告警不阻断。
+  # allowed_roots: "work"
 
 server:
-  host: "0.0.0.0"
+  # 默认仅本机可访问。如需局域网访问请改为 0.0.0.0 并显式设置 allow_remote: true，
+  # 同时强烈建议配置 allowed_ips（IP 白名单）与 auth_token（访问令牌）。
+  host: "127.0.0.1"
   port: 8765
+  allow_remote: false
+  # allowed_ips: "127.0.0.1, 192.168.1.*, 10.0.0.0/8"
+  # auth_token: ""
 
 work_dir: "work"

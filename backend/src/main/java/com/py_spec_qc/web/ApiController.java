@@ -218,6 +218,27 @@ public final class ApiController {
         String absReqDir = toAbsolutePathString(reqDir);
         String absOutDir = outDir.isBlank() ? "" : toAbsolutePathString(outDir);
         String absRulesDir = rulesDir.isBlank() ? "" : toAbsolutePathString(rulesDir);
+
+        AppConfig scanConfig = new ConfigLoader().load();
+        boolean rootsConfigured = scanConfig != null && scanConfig.scanAllowedRoots != null && !scanConfig.scanAllowedRoots.isEmpty();
+        String violation = firstViolation(scanConfig, "req_dir", absReqDir);
+        if (violation == null) {
+            violation = firstViolation(scanConfig, "out_dir", absOutDir);
+        }
+        if (violation == null) {
+            violation = firstViolation(scanConfig, "rules_dir", absRulesDir);
+        }
+        if (violation != null) {
+            appendLog("scan_rejected path_violation " + violation);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                    "error", violation,
+                    "hint", "如需放开请配置 scan.allowed_roots（环境变量 SPEC_QC_ALLOWED_ROOTS），或移除该限制"));
+        }
+        if (!rootsConfigured && !withinWorkDir(absReqDir)) {
+            appendLog("scan_warning outside_work_dir req_dir=" + absReqDir
+                    + " work_dir=" + workDir + " hint=可在 config.yaml 配置 scan.allowed_roots 限制扫描范围");
+        }
+
         synchronized (cacheLock) {
             try {
                 saveCache(absReqDir, absOutDir, absRulesDir);
@@ -313,6 +334,12 @@ public final class ApiController {
         Path dir = Path.of(p).toAbsolutePath().normalize();
         if (!Files.isDirectory(dir)) {
             return Map.of("error", "not a directory");
+        }
+        AppConfig fsConfig = new ConfigLoader().load();
+        String fsViolation = firstViolation(fsConfig, "path", dir.toString());
+        if (fsViolation != null) {
+            appendLog("fs_rejected path_violation " + fsViolation);
+            return Map.of("error", fsViolation);
         }
         List<Map<String, String>> entries = new ArrayList<>();
         try {
@@ -1028,6 +1055,53 @@ public final class ApiController {
         StringBuilder sb = new StringBuilder(s);
         while (sb.length() < len) {
             sb.append('0');
+        }
+        return sb.toString();
+    }
+
+    private boolean withinWorkDir(String absPath) {
+        String t = safeTrim(absPath);
+        if (t.isBlank()) {
+            return true;
+        }
+        try {
+            return Path.of(t).toAbsolutePath().normalize().startsWith(workDir);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** 返回 null 表示允许；否则返回违规说明。未配置 allowed_roots 时不做限制（保持兼容）。 */
+    private static String firstViolation(AppConfig config, String label, String absPath) {
+        if (config == null || config.scanAllowedRoots == null || config.scanAllowedRoots.isEmpty()) {
+            return null;
+        }
+        String t = safeTrim(absPath);
+        if (t.isBlank()) {
+            return null;
+        }
+        Path p = Path.of(t).toAbsolutePath().normalize();
+        for (Path root : config.scanAllowedRoots) {
+            if (root == null) {
+                continue;
+            }
+            if (p.startsWith(root.toAbsolutePath().normalize())) {
+                return null;
+            }
+        }
+        return label + " 不在允许的根目录内: " + p + "（可访问根目录: " + allowedRootsText(config.scanAllowedRoots) + "）";
+    }
+
+    private static String allowedRootsText(List<Path> roots) {
+        StringBuilder sb = new StringBuilder();
+        for (Path r : roots) {
+            if (r == null) {
+                continue;
+            }
+            if (sb.length() > 0) {
+                sb.append(", ");
+            }
+            sb.append(r);
         }
         return sb.toString();
     }

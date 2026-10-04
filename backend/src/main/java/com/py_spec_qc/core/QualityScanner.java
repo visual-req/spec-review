@@ -10,6 +10,8 @@ import com.py_spec_qc.core.model.FileProgress;
 import com.py_spec_qc.core.model.Issue;
 import com.py_spec_qc.core.rules.RulesData;
 import com.py_spec_qc.core.rules.RulesLoader;
+import com.py_spec_qc.core.security.NetworkGuard;
+import com.py_spec_qc.core.security.SecretRedactor;
 import com.py_spec_qc.core.word.DocxTextExtractor;
 import com.py_spec_qc.core.xlsx.XlsxIO;
 import java.io.IOException;
@@ -247,6 +249,18 @@ public final class QualityScanner {
                 continue;
             }
 
+            boolean externalLlm = NetworkGuard.isExternal(config.deepseekBaseUrl);
+            if (externalLlm) {
+                appendScanLog(logPath, "data_boundary_warning file=" + wordPath.getFileName().toString()
+                        + " external_llm_url=" + config.deepseekBaseUrl
+                        + " hint=需求文档内容将发送到外部模型，存在数据出域风险；建议改用内网/私有模型");
+            }
+            SecretRedactor.Result redacted = SecretRedactor.redact(requirementText);
+            if (redacted.count() > 0) {
+                requirementText = redacted.text();
+                appendScanLog(logPath, "redacted_secrets file=" + wordPath.getFileName().toString() + " count=" + redacted.count() + " pattern=sensitive_value_masked");
+            }
+
             if (config.deepseekApiKey == null || config.deepseekApiKey.isBlank()) {
                 String err = normalizeLang(lang).equals("en")
                         ? "LLM api_key is not configured. Set llm.api_key in executable/config.yaml (deepseek.api_key is also supported), or set env LLM_API_KEY / DEEPSEEK_API_KEY."
@@ -303,6 +317,7 @@ public final class QualityScanner {
                             config.deepseekApiKey,
                             config.deepseekModel,
                             config.deepseekTimeoutSeconds,
+                            config.deepseekAllowExternal,
                             buildMessages(chunkText, requirementText, from, to, totalRules, lang)
                     );
                     JsonNode obj = outputParser.parseJsonObject(content);

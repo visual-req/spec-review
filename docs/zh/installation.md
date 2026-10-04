@@ -32,10 +32,17 @@ deepseek:
   base_url: "https://api.deepseek.com/v1"
   api_key: "YOUR_DEEPSEEK_API_KEY"
   model: "deepseek-chat"
+  allow_external: true   # 指向公网模型必须显式允许，否则阻止发送需求（数据不出域）
+
+scan:
+  # allowed_roots: "work"   # 可选：限制可扫描/可浏览的根目录
 
 server:
-  host: "0.0.0.0"
+  host: "127.0.0.1"      # 默认仅本机可访问
   port: 8765
+  allow_remote: false    # 监听非本机地址需显式开启
+  # allowed_ips: "127.0.0.1, 192.168.1.*, 10.0.0.0/8"
+  # auth_token: ""
 
 work_dir: "work"
 ```
@@ -51,6 +58,11 @@ export DEEPSEEK_API_KEY="..."
 - `SPEC_QC_WORK_DIR`：覆盖工作目录（绝对路径更稳妥）
 - `SPEC_QC_HOST` / `SPEC_QC_PORT`：覆盖 Web 监听地址与端口
 - `SPEC_QC_INDUSTRY`：指定当前扫描行业（用于规则行业边界）
+- `SPEC_QC_ALLOW_EXTERNAL_LLM`：是否允许把需求发送到外部模型（false 时公网地址将被阻止）
+- `SPEC_QC_ALLOWED_ROOTS`：限制可扫描/可浏览的根目录（逗号分隔）
+- `SPEC_QC_ALLOW_REMOTE`：是否允许监听非本机地址（默认 false）
+- `SPEC_QC_ALLOWED_IPS`：`/api/**` 来源 IP 白名单（支持 `192.168.1.*`、`10.0.0.0/8`）
+- `SPEC_QC_AUTH_TOKEN`：`/api/**` 访问令牌（请求头 `X-Auth-Token` 或 `Authorization: Bearer`）
 
 ### 4) 从源码构建（可选）
 
